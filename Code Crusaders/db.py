@@ -11,7 +11,8 @@ from datetime import datetime
 from typing import Optional
 
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "review_history.db")
+# Use environment variable for DB path if set (e.g., in Docker), otherwise default to local dir
+DB_PATH = os.environ.get("CRUSADER_DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "review_history.db"))
 
 
 def _get_connection() -> sqlite3.Connection:
