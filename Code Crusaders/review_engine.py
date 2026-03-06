@@ -9,7 +9,7 @@ import os
 from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from prompts import SYSTEM_PROMPT, CODE_REVIEW_PROMPT, SECURITY_FOCUS_PROMPT, QUICK_REVIEW_PROMPT, OPTIMIZE_CODE_PROMPT
+from prompts import SYSTEM_PROMPT, CODE_REVIEW_PROMPT, OPTIMIZE_CODE_PROMPT
 from utils import parse_llm_json
 
 
@@ -85,25 +85,6 @@ class CodeReviewEngine:
         prompt = CODE_REVIEW_PROMPT.format(language=language, code=code)
         response = self._invoke(prompt)
         return parse_llm_json(response)
-
-    def security_review(self, code: str, language: str = "Python") -> dict:
-        """
-        Perform a security-focused review.
-        Returns vulnerabilities with CWE IDs, attack vectors, and secure fixes.
-        """
-        prompt = SECURITY_FOCUS_PROMPT.format(language=language, code=code)
-        response = self._invoke(prompt)
-        return parse_llm_json(response)
-
-    def quick_review(self, code: str, language: str = "Python") -> dict:
-        """
-        Perform a quick review focusing only on the top critical issues.
-        Faster and uses fewer tokens.
-        """
-        prompt = QUICK_REVIEW_PROMPT.format(language=language, code=code)
-        response = self._invoke(prompt)
-        return parse_llm_json(response)
-
     def optimize_code(self, code: str, language: str = "Python") -> str:
         """
         Generate the full optimized/corrected version of the code.
@@ -117,6 +98,37 @@ class CodeReviewEngine:
         cleaned = re.sub(r"^```[\w]*\s*\n?", "", cleaned)
         cleaned = re.sub(r"\n?```\s*$", "", cleaned)
         return cleaned.strip()
+
+    def chat(self, messages: list, code: str, review_summary: str, language: str = "Python") -> str:
+        """
+        Follow-up chat about the code review.
+        Takes conversation history and returns the AI response.
+        """
+        system_content = (
+            "You are an expert code review assistant. The user has just received a code review "
+            "and wants to ask follow-up questions. You have full context of their code and review.\n\n"
+            f"**Language:** {language}\n\n"
+            f"**Code being reviewed:**\n```{language.lower()}\n{code[:3000]}\n```\n\n"
+            f"**Review Summary:** {review_summary}\n\n"
+            "Answer questions clearly and concisely. When showing code, use proper markdown formatting. "
+            "If asked to fix something, show the corrected code. Be helpful and educational."
+        )
+
+        langchain_messages = [SystemMessage(content=system_content)]
+        for msg in messages:
+            if msg["role"] == "user":
+                langchain_messages.append(HumanMessage(content=msg["content"]))
+            else:
+                from langchain_core.messages import AIMessage
+                langchain_messages.append(AIMessage(content=msg["content"]))
+
+        try:
+            response = self.llm.invoke(langchain_messages)
+            if hasattr(response, "content"):
+                return response.content
+            return str(response)
+        except Exception as e:
+            return f"⚠️ Error: {str(e)[:200]}"
 
     # ─── LLM Invocation ─────────────────────────────────────────────────
 

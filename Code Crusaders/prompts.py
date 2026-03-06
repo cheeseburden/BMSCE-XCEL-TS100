@@ -69,61 +69,6 @@ Only deduct points for REAL problems — not for stylistic preferences or missin
 Simple, correct code is better than over-engineered code."""
 
 
-QUICK_REVIEW_PROMPT = """Provide a quick review of this {language} code focusing on the most critical issues only (top 3-5):
-
-```{language}
-{code}
-```
-
-Return JSON with this structure:
-{{
-    "overall_score": <integer 0-100>,
-    "summary": "<1-2 sentence summary>",
-    "top_issues": [
-        {{
-            "severity": "<Critical/High/Medium/Low>",
-            "title": "<short title>",
-            "fix": "<what to change>"
-        }}
-    ]
-}}
-
-Return ONLY valid JSON."""
-
-
-SECURITY_FOCUS_PROMPT = """Perform a security-focused code review of this {language} code. Focus exclusively on \
-security vulnerabilities, data exposure risks, and unsafe practices.
-
-```{language}
-{code}
-```
-
-Return JSON with this structure:
-{{
-    "security_score": <integer 0-10>,
-    "vulnerability_count": <integer>,
-    "vulnerabilities": [
-        {{
-            "id": <integer>,
-            "cwe_id": "<CWE ID if applicable, e.g. CWE-79>",
-            "severity": "<Critical/High/Medium/Low>",
-            "title": "<vulnerability title>",
-            "description": "<detailed description>",
-            "attack_vector": "<how this could be exploited>",
-            "line_reference": "<line number or range>",
-            "vulnerable_code": "<the vulnerable code>",
-            "secure_fix": "<secure version of the code>",
-            "explanation": "<why this fix is secure, what security principle it follows>",
-            "reference": "<OWASP/CWE/documentation reference>"
-        }}
-    ],
-    "security_recommendations": [
-        "<general security recommendation>"
-    ]
-}}
-
-Return ONLY valid JSON."""
-
 
 OPTIMIZE_CODE_PROMPT = """You are given the following {language} code. Rewrite it to fix all genuine issues \
 while keeping the code PRACTICAL, CLEAN, and INDUSTRY-READY.

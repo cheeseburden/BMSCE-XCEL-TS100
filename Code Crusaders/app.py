@@ -335,7 +335,7 @@ with st.sidebar:
     st.markdown("### 🔑 API Key")
     saved_api_key = get_setting("api_key", "")
     api_key = st.text_input(
-        "Groq API Key (Free)",
+        "Groq API Key",
         value=saved_api_key,
         type="password",
         placeholder="gsk_...",
@@ -378,21 +378,8 @@ with st.sidebar:
     if language != saved_lang:
         save_setting("language", language)
 
-    st.markdown("---")
-
-    # Review mode
-    st.markdown("### 📋 Review Mode")
-    mode_options = ["🔍 Comprehensive", "🔒 Security Focus", "⚡ Quick Review"]
-    saved_mode = get_setting("review_mode", mode_options[0])
-    saved_mode_idx = mode_options.index(saved_mode) if saved_mode in mode_options else 0
-    review_mode = st.radio(
-        "Choose review type",
-        mode_options,
-        index=saved_mode_idx,
-        help="Comprehensive: Full analysis | Security: Vulnerability-focused | Quick: Top issues only",
-    )
-    if review_mode != saved_mode:
-        save_setting("review_mode", review_mode)
+    # Review mode is always Comprehensive
+    review_mode = "🔍 Comprehensive"
 
     st.markdown("---")
 
@@ -661,12 +648,7 @@ if review_clicked and code_input and api_key:
         progress_bar.progress(25, text=f"🤖 Analyzing with {selected_model}...")
         engine = CodeReviewEngine(api_key=api_key, model_name=selected_model)
 
-        if "Security" in review_mode:
-            review = engine.security_review(code_input, language)
-        elif "Quick" in review_mode:
-            review = engine.quick_review(code_input, language)
-        else:
-            review = engine.review_code(code_input, language)
+        review = engine.review_code(code_input, language)
 
         # Step 3: Generate Optimized Code
         progress_bar.progress(65, text="✨ Generating optimized code...")
@@ -744,329 +726,404 @@ if st.session_state.get("last_review"):
     elapsed = lr["elapsed"]
 
     st.markdown("---")
-    st.markdown("## 📊 Review Results")
-
-    # Top-level metrics row
-    overall_score = review.get("overall_score", 0)
-    issues = review.get("issues", [])
-    # For security review mode, adapt keys
-    if "Security" in review_mode_display and "vulnerabilities" in review:
-        issues = review.get("vulnerabilities", [])
-
-    severity_counts = count_by_severity(issues) if issues else {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
-
-    # Score gradient
-    if overall_score >= 80:
-        score_color = "#10b981"
-        score_bg = "rgba(16,185,129,0.08)"
-        score_border = "rgba(16,185,129,0.3)"
-        grade = "A"
-    elif overall_score >= 60:
-        score_color = "#3b82f6"
-        score_bg = "rgba(59,130,246,0.08)"
-        score_border = "rgba(59,130,246,0.3)"
-        grade = "B"
-    elif overall_score >= 40:
-        score_color = "#f59e0b"
-        score_bg = "rgba(245,158,11,0.08)"
-        score_border = "rgba(245,158,11,0.3)"
-        grade = "C"
+    
+    # Toggle for chat
+    header_col, toggle_col = st.columns([3, 1])
+    with header_col:
+        st.markdown("## 📊 Review Results")
+    with toggle_col:
+        st.markdown("<br>", unsafe_allow_html=True)
+        show_chat = st.toggle("💬 Open AI Chat", value=st.session_state.get("show_chat", False), key="show_chat")
+        
+    if show_chat:
+        main_col, chat_col = st.columns([7, 3], gap="large")
     else:
-        score_color = "#ef4444"
-        score_bg = "rgba(239,68,68,0.08)"
-        score_border = "rgba(239,68,68,0.3)"
-        grade = "D"
+        main_col = st.container()
+        chat_col = None
 
-    # --- Score + Summary Row ---
-    score_col, summary_col = st.columns([1, 2])
-
-    with score_col:
-        if "Security" in review_mode_display:
-            sec_score = review.get("security_score", 0)
-            display_score = sec_score * 10
+    with main_col:
+        
+        # Top-level metrics row
+        overall_score = review.get("overall_score", 0)
+        issues = review.get("issues", [])
+        
+        severity_counts = count_by_severity(issues) if issues else {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+        
+        # Score gradient
+        if overall_score >= 80:
+            score_color = "#10b981"
+            score_bg = "rgba(16,185,129,0.08)"
+            score_border = "rgba(16,185,129,0.3)"
+            grade = "A"
+        elif overall_score >= 60:
+            score_color = "#3b82f6"
+            score_bg = "rgba(59,130,246,0.08)"
+            score_border = "rgba(59,130,246,0.3)"
+            grade = "B"
+        elif overall_score >= 40:
+            score_color = "#f59e0b"
+            score_bg = "rgba(245,158,11,0.08)"
+            score_border = "rgba(245,158,11,0.3)"
+            grade = "C"
         else:
+            score_color = "#ef4444"
+            score_bg = "rgba(239,68,68,0.08)"
+            score_border = "rgba(239,68,68,0.3)"
+            grade = "D"
+        
+        # --- Score + Summary Row ---
+        score_col, summary_col = st.columns([1, 2])
+        
+        with score_col:
             display_score = overall_score
-
-        st.markdown(f"""
-        <div class="score-container">
-            <div class="score-circle" style="
-                background: {score_bg};
-                border: 3px solid {score_border};
-            ">
-                <div class="score-number" style="color: {score_color};">{display_score}</div>
-                <div class="score-label">out of 100</div>
+        
+            st.markdown(f"""
+            <div class="score-container">
+                <div class="score-circle" style="
+                    background: {score_bg};
+                    border: 3px solid {score_border};
+                ">
+                    <div class="score-number" style="color: {score_color};">{display_score}</div>
+                    <div class="score-label">out of 100</div>
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with summary_col:
-        st.markdown(f"### 📝 Summary")
-        st.markdown(review.get("summary", "No summary available."))
-        st.markdown(f"**⏱️ Analysis Time:** {elapsed}s &nbsp; | &nbsp; **🤖 Model:** {selected_model_display} &nbsp; | &nbsp; **📋 Grade:** {grade}")
-
-    # --- Severity Count Metrics ---
-    st.markdown("")
-    c1, c2, c3, c4, c5 = st.columns(5)
-
-    with c1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value" style="color: {score_color};">{display_score}</div>
-            <div class="metric-label">Quality Score</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value" style="color: #ff4444;">{severity_counts.get("Critical", 0)}</div>
-            <div class="metric-label">🔴 Critical</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value" style="color: #ff8c00;">{severity_counts.get("High", 0)}</div>
-            <div class="metric-label">🟠 High</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c4:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value" style="color: #ffd700;">{severity_counts.get("Medium", 0)}</div>
-            <div class="metric-label">🟡 Medium</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c5:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value" style="color: #44bb44;">{severity_counts.get("Low", 0)}</div>
-            <div class="metric-label">🟢 Low</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("")
-
-    # --- Quality Metrics Bars ---
-    ai_metrics = review.get("metrics", {})
-    if ai_metrics and "Security" not in review_mode_display:
-        st.markdown("### 📈 Quality Metrics")
-        metric_cols = st.columns(5)
-        metric_items = [
-            ("Readability", "readability", "#6366f1"),
-            ("Maintainability", "maintainability", "#a855f7"),
-            ("Security", "security", "#ef4444"),
-            ("Performance", "performance", "#f59e0b"),
-            ("Best Practices", "best_practices", "#10b981"),
-        ]
-        for col, (label, key, color) in zip(metric_cols, metric_items):
-            val = ai_metrics.get(key, 0)
-            pct = val * 10
-            with col:
-                st.markdown(f"""
-                <div class="metric-card" style="padding: 1rem;">
-                    <div class="metric-value" style="color: {color}; font-size: 1.8rem;">{val}/10</div>
-                    <div class="metric-label">{label}</div>
-                    <div class="quality-bar">
-                        <div class="quality-fill" style="width: {pct}%; background: {color};"></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
+            """, unsafe_allow_html=True)
+        
+        with summary_col:
+            st.markdown(f"### 📝 Summary")
+            st.markdown(review.get("summary", "No summary available."))
+            st.markdown(f"**⏱️ Analysis Time:** {elapsed}s &nbsp; | &nbsp; **🤖 Model:** {selected_model_display} &nbsp; | &nbsp; **📋 Grade:** {grade}")
+        
+        # --- Severity Count Metrics ---
         st.markdown("")
-
-    # --- Tabs ---
-    lang_lower = language_display.lower().split()[0]
-    issues_tab, optimized_tab, static_tab, strengths_tab, report_tab = st.tabs([
-        f"🐛 Issues ({len(issues)})",
-        "✅ Optimized Code",
-        f"📊 Static Analysis ({metrics.get('static_issues', 0)})",
-        f"✨ Strengths",
-        "📄 Download Report",
-    ])
-
-    with issues_tab:
-        if not issues:
-            st.success("🎉 No issues found! Your code looks great.")
-        else:
-            sorted_issues = sort_issues_by_severity(issues)
-
-            # Filter controls
-            filter_col1, filter_col2 = st.columns(2)
-            with filter_col1:
-                sev_filter = st.multiselect(
-                    "Filter by Severity",
-                    ["Critical", "High", "Medium", "Low"],
-                    default=["Critical", "High", "Medium", "Low"],
-                )
-            with filter_col2:
-                cats = list(set(i.get("category", "Other") for i in issues))
-                cat_filter = st.multiselect(
-                    "Filter by Category",
-                    cats,
-                    default=cats,
-                )
-
-            filtered = [
-                i for i in sorted_issues
-                if i.get("severity", "Low") in sev_filter
-                and i.get("category", "Other") in cat_filter
+        c1, c2, c3, c4, c5 = st.columns(5)
+        
+        with c1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: {score_color};">{display_score}</div>
+                <div class="metric-label">Quality Score</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with c2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: #ff4444;">{severity_counts.get("Critical", 0)}</div>
+                <div class="metric-label">🔴 Critical</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with c3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: #ff8c00;">{severity_counts.get("High", 0)}</div>
+                <div class="metric-label">🟠 High</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with c4:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: #ffd700;">{severity_counts.get("Medium", 0)}</div>
+                <div class="metric-label">🟡 Medium</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with c5:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value" style="color: #44bb44;">{severity_counts.get("Low", 0)}</div>
+                <div class="metric-label">🟢 Low</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("")
+        
+        # --- Quality Metrics Bars ---
+        ai_metrics = review.get("metrics", {})
+        if ai_metrics:
+            st.markdown("### 📈 Quality Metrics")
+            metric_cols = st.columns(5)
+            metric_items = [
+                ("Readability", "readability", "#6366f1"),
+                ("Maintainability", "maintainability", "#a855f7"),
+                ("Security", "security", "#ef4444"),
+                ("Performance", "performance", "#f59e0b"),
+                ("Best Practices", "best_practices", "#10b981"),
             ]
-
-            for idx, issue in enumerate(filtered):
-                sev = issue.get("severity", "Low")
-                cat = issue.get("category", "Other")
-                title = issue.get("title", "Issue")
-                cat_emoji = CATEGORY_EMOJI.get(cat, "📋")
-
-                with st.expander(
-                    f"{SEVERITY_EMOJI.get(sev, '⚪')} [{sev}] {cat_emoji} {title}  —  {issue.get('line_reference', '')}",
-                    expanded=(sev in ("Critical", "High")),
-                ):
-                    st.markdown(f"**📝 Description:** {issue.get('description', 'N/A')}")
-                    st.markdown("")
-
-                    prob_code = issue.get("problematic_code") or issue.get("vulnerable_code", "")
-                    if prob_code:
-                        st.markdown("**❌ Problematic Code:**")
-                        st.code(prob_code, language=lang_lower)
-
-                    fix_code = issue.get("suggested_fix") or issue.get("secure_fix", "")
-                    explanation = issue.get("explanation", "")
-                    reference = issue.get("learning_reference") or issue.get("reference", "")
-
-                    if fix_code or explanation:
-                        st.markdown("""
-                        <div class="learn-fix-panel">
-                            <div class="learn-fix-title">✅ Learn & Fix — Best Practice Solution</div>
+            for col, (label, key, color) in zip(metric_cols, metric_items):
+                val = ai_metrics.get(key, 0)
+                pct = val * 10
+                with col:
+                    st.markdown(f"""
+                    <div class="metric-card" style="padding: 1rem;">
+                        <div class="metric-value" style="color: {color}; font-size: 1.8rem;">{val}/10</div>
+                        <div class="metric-label">{label}</div>
+                        <div class="quality-bar">
+                            <div class="quality-fill" style="width: {pct}%; background: {color};"></div>
                         </div>
-                        """, unsafe_allow_html=True)
-
-                        if fix_code:
-                            st.markdown("**✅ Best Practice Code:**")
-                            st.code(fix_code, language=lang_lower)
-
-                        if explanation:
-                            st.markdown(f"**📖 Why This Is Better:** {explanation}")
-
-                        if reference:
-                            st.markdown(f"**🔗 Learn More:** {reference}")
-
-    with static_tab:
-        st.markdown("### 📊 Code Metrics (Static Analysis)")
-        st.markdown("*These metrics are computed locally without AI — instant results.*")
-
-        sm1, sm2, sm3, sm4 = st.columns(4)
-        with sm1:
-            st.metric("Total Lines", metrics["total_lines"])
-        with sm2:
-            st.metric("Functions", metrics["function_count"])
-        with sm3:
-            st.metric("Classes", metrics["class_count"])
-        with sm4:
-            st.metric("Complexity", metrics["cyclomatic_complexity"])
-
-        sm5, sm6, sm7, sm8 = st.columns(4)
-        with sm5:
-            st.metric("Non-Empty Lines", metrics["non_empty_lines"])
-        with sm6:
-            st.metric("Comment Lines", metrics["comment_lines"])
-        with sm7:
-            st.metric("Comment Ratio", f"{metrics['comment_ratio']}%")
-        with sm8:
-            st.metric("Imports", metrics["import_count"])
-
-        if static_issues:
-            st.markdown("### ⚠️ Static Analysis Issues")
-            for si in static_issues:
-                severity = si.get("severity", "Low")
-                emoji = SEVERITY_EMOJI.get(severity, "⚪")
-                st.markdown(
-                    f"- {emoji} **[{severity}]** Line {si.get('line', '?')}: "
-                    f"{si.get('message', 'N/A')} ({si.get('type', '')})"
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+            st.markdown("")
+        
+        # --- Tabs ---
+        lang_lower = language_display.lower().split()[0]
+        issues_tab, optimized_tab, static_tab, strengths_tab, report_tab = st.tabs([
+            f"🐛 Issues ({len(issues)})",
+            "✅ Optimized Code",
+            f"📊 Static Analysis ({metrics.get('static_issues', 0)})",
+            f"✨ Strengths",
+            "📄 Download Report",
+        ])
+        
+        with issues_tab:
+            if not issues:
+                st.success("🎉 No issues found! Your code looks great.")
+            else:
+                sorted_issues = sort_issues_by_severity(issues)
+        
+                # Filter controls
+                filter_col1, filter_col2 = st.columns(2)
+                with filter_col1:
+                    sev_filter = st.multiselect(
+                        "Filter by Severity",
+                        ["Critical", "High", "Medium", "Low"],
+                        default=["Critical", "High", "Medium", "Low"],
+                    )
+                with filter_col2:
+                    cats = list(set(i.get("category", "Other") for i in issues))
+                    cat_filter = st.multiselect(
+                        "Filter by Category",
+                        cats,
+                        default=cats,
+                    )
+        
+                filtered = [
+                    i for i in sorted_issues
+                    if i.get("severity", "Low") in sev_filter
+                    and i.get("category", "Other") in cat_filter
+                ]
+        
+                for idx, issue in enumerate(filtered):
+                    sev = issue.get("severity", "Low")
+                    cat = issue.get("category", "Other")
+                    title = issue.get("title", "Issue")
+                    cat_emoji = CATEGORY_EMOJI.get(cat, "📋")
+        
+                    with st.expander(
+                        f"{SEVERITY_EMOJI.get(sev, '⚪')} [{sev}] {cat_emoji} {title}  —  {issue.get('line_reference', '')}",
+                        expanded=(sev in ("Critical", "High")),
+                    ):
+                        st.markdown(f"**📝 Description:** {issue.get('description', 'N/A')}")
+                        st.markdown("")
+        
+                        prob_code = issue.get("problematic_code")
+                        if prob_code:
+                            st.markdown("**❌ Problematic Code:**")
+                            st.code(prob_code, language=lang_lower)
+        
+                        fix_code = issue.get("suggested_fix", "")
+                        explanation = issue.get("explanation", "")
+                        reference = issue.get("learning_reference", "")
+        
+                        if fix_code or explanation:
+                            st.markdown("""
+                            <div class="learn-fix-panel">
+                                <div class="learn-fix-title">✅ Learn & Fix — Best Practice Solution</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+        
+                            if fix_code:
+                                st.markdown("**✅ Best Practice Code:**")
+                                st.code(fix_code, language=lang_lower)
+        
+                            if explanation:
+                                st.markdown(f"**📖 Why This Is Better:** {explanation}")
+        
+                            if reference:
+                                st.markdown(f"**🔗 Learn More:** {reference}")
+        
+        with static_tab:
+            st.markdown("### 📊 Code Metrics (Static Analysis)")
+            st.markdown("*These metrics are computed locally without AI — instant results.*")
+        
+            sm1, sm2, sm3, sm4 = st.columns(4)
+            with sm1:
+                st.metric("Total Lines", metrics["total_lines"])
+            with sm2:
+                st.metric("Functions", metrics["function_count"])
+            with sm3:
+                st.metric("Classes", metrics["class_count"])
+            with sm4:
+                st.metric("Complexity", metrics["cyclomatic_complexity"])
+        
+            sm5, sm6, sm7, sm8 = st.columns(4)
+            with sm5:
+                st.metric("Non-Empty Lines", metrics["non_empty_lines"])
+            with sm6:
+                st.metric("Comment Lines", metrics["comment_lines"])
+            with sm7:
+                st.metric("Comment Ratio", f"{metrics['comment_ratio']}%")
+            with sm8:
+                st.metric("Imports", metrics["import_count"])
+        
+            if static_issues:
+                st.markdown("### ⚠️ Static Analysis Issues")
+                for si in static_issues:
+                    severity = si.get("severity", "Low")
+                    emoji = SEVERITY_EMOJI.get(severity, "⚪")
+                    st.markdown(
+                        f"- {emoji} **[{severity}]** Line {si.get('line', '?')}: "
+                        f"{si.get('message', 'N/A')} ({si.get('type', '')})"
+                    )
+        
+            if functions_summary:
+                st.markdown("### 📦 Functions Detected")
+                for fn in functions_summary:
+                    body_lines = fn.get("body_lines", 0)
+                    warn = " ⚠️ Long function!" if body_lines > 50 else ""
+                    st.markdown(
+                        f"- `{fn['name']}()` — Line {fn['line']}, "
+                        f"{fn['args']} args, {body_lines} lines{warn}"
+                    )
+        
+        with strengths_tab:
+            strengths = review.get("strengths", [])
+        
+            if strengths:
+                st.markdown("### ✨ What's Good About Your Code")
+                for s in strengths:
+                    st.markdown(f"""
+                    <div class="strength-item">
+                        <span>💪</span> {s}
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No specific strengths identified in this review.")
+        
+        with optimized_tab:
+            st.markdown("### ✅ Optimized Code")
+            st.markdown("*AI-generated best-practice version of your code with all issues fixed.*")
+        
+            if optimized_code:
+                # Sub-tabs: Diff View vs Full Code
+                diff_sub, full_sub = st.tabs(["🔄 Diff View", "📋 Full Code"])
+        
+                with diff_sub:
+                    # Nested tabs: Unified vs Split (no rerun, unlike radio)
+                    unified_view, split_view = st.tabs(["Unified", "Split"])
+                    with unified_view:
+                        diff_html = generate_diff_html(code_input_display, optimized_code)
+                        st.markdown(diff_html, unsafe_allow_html=True)
+                    with split_view:
+                        split_html = generate_split_diff_html(code_input_display, optimized_code)
+                        st.markdown(split_html, unsafe_allow_html=True)
+        
+                with full_sub:
+                    st.code(optimized_code, language=lang_lower)
+        
+                # Download button for optimized code
+                lang_ext_map = {
+                    "Python": ".py", "JavaScript": ".js", "TypeScript": ".ts",
+                    "Java": ".java", "C++": ".cpp", "C": ".c", "C#": ".cs",
+                    "Go": ".go", "Rust": ".rs", "Ruby": ".rb", "PHP": ".php",
+                }
+                ext = lang_ext_map.get(language_display, ".txt")
+                st.download_button(
+                    label="📥 Download Optimized Code",
+                    data=optimized_code,
+                    file_name=f"optimized_code{ext}",
+                    mime="text/plain",
+                    use_container_width=True,
                 )
-
-        if functions_summary:
-            st.markdown("### 📦 Functions Detected")
-            for fn in functions_summary:
-                body_lines = fn.get("body_lines", 0)
-                warn = " ⚠️ Long function!" if body_lines > 50 else ""
-                st.markdown(
-                    f"- `{fn['name']}()` — Line {fn['line']}, "
-                    f"{fn['args']} args, {body_lines} lines{warn}"
-                )
-
-    with strengths_tab:
-        strengths = review.get("strengths", [])
-        if "Security" in review_mode_display:
-            strengths = review.get("security_recommendations", strengths)
-
-        if strengths:
-            st.markdown("### ✨ What's Good About Your Code")
-            for s in strengths:
-                st.markdown(f"""
-                <div class="strength-item">
-                    <span>💪</span> {s}
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No specific strengths identified in this review.")
-
-    with optimized_tab:
-        st.markdown("### ✅ Optimized Code")
-        st.markdown("*AI-generated best-practice version of your code with all issues fixed.*")
-
-        if optimized_code:
-            # Sub-tabs: Diff View vs Full Code
-            diff_sub, full_sub = st.tabs(["🔄 Diff View", "📋 Full Code"])
-
-            with diff_sub:
-                # Nested tabs: Unified vs Split (no rerun, unlike radio)
-                unified_view, split_view = st.tabs(["Unified", "Split"])
-                with unified_view:
-                    diff_html = generate_diff_html(code_input_display, optimized_code)
-                    st.markdown(diff_html, unsafe_allow_html=True)
-                with split_view:
-                    split_html = generate_split_diff_html(code_input_display, optimized_code)
-                    st.markdown(split_html, unsafe_allow_html=True)
-
-            with full_sub:
-                st.code(optimized_code, language=lang_lower)
-
-            # Download button for optimized code
-            lang_ext_map = {
-                "Python": ".py", "JavaScript": ".js", "TypeScript": ".ts",
-                "Java": ".java", "C++": ".cpp", "C": ".c", "C#": ".cs",
-                "Go": ".go", "Rust": ".rs", "Ruby": ".rb", "PHP": ".php",
-            }
-            ext = lang_ext_map.get(language_display, ".txt")
+            else:
+                st.warning("Could not generate optimized code. Please try again.")
+        
+        with report_tab:
+            st.markdown("### 📄 Download Full Report")
+            report_md = generate_markdown_report(review, language_display, code_input_display)
             st.download_button(
-                label="📥 Download Optimized Code",
-                data=optimized_code,
-                file_name=f"optimized_code{ext}",
-                mime="text/plain",
+                label="📥 Download Markdown Report",
+                data=report_md,
+                file_name="code_review_report.md",
+                mime="text/markdown",
                 use_container_width=True,
             )
-        else:
-            st.warning("Could not generate optimized code. Please try again.")
+            with st.expander("Preview Report"):
+                st.markdown(report_md)
+        
+        
+    if chat_col:
+        with chat_col:
+            # ─── AI Chat Follow-up ──────────────────────────────────────────────────
+            st.markdown("---")
+            
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                st.markdown("## 💬 AI Chat")
+            with c2:
+                if st.session_state.get("chat_messages"):
+                    if st.button("🗑️ Clear", key="clear_chat", use_container_width=True):
+                        st.session_state["chat_messages"] = []
+                        st.rerun()
 
-    with report_tab:
-        st.markdown("### 📄 Download Full Report")
-        report_md = generate_markdown_report(review, language_display, code_input_display)
-        st.download_button(
-            label="📥 Download Markdown Report",
-            data=report_md,
-            file_name="code_review_report.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
-        with st.expander("Preview Report"):
-            st.markdown(report_md)
+            st.markdown("*Ask follow-up questions about your code or the review results.*")
 
+            # Initialize chat history
+            if "chat_messages" not in st.session_state:
+                st.session_state["chat_messages"] = []
 
+            # Scrollable container for messages
+            chat_container = st.container(height=500)
+            
+            with chat_container:
+                # Suggested prompts
+                if not st.session_state["chat_messages"]:
+                    st.markdown("**💡 Try asking:**")
+                    suggest_cols = st.columns(1)
+                    suggestions = [
+                        "How do I fix the most critical issue?",
+                        "Explain the security concerns",
+                        "Can you refactor this to be more readable?",
+                    ]
+                    for i, suggestion in enumerate(suggestions):
+                        if st.button(suggestion, key=f"suggest_{i}", use_container_width=True):
+                            st.session_state["chat_messages"].append({"role": "user", "content": suggestion})
+                            st.rerun()
+
+                # Display chat history
+                for msg in st.session_state["chat_messages"]:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
+
+                # Generate AI response inline inside the scrollable container
+                if (st.session_state["chat_messages"]
+                    and st.session_state["chat_messages"][-1]["role"] == "user"):
+                    with st.chat_message("assistant"):
+                        with st.spinner("🤖 Thinking..."):
+                            try:
+                                chat_engine = CodeReviewEngine(api_key=api_key, model_name=selected_model_display)
+                                review_summary = review.get("summary", "No summary available.")
+                                ai_response = chat_engine.chat(
+                                    messages=st.session_state["chat_messages"],
+                                    code=code_input_display,
+                                    review_summary=review_summary,
+                                    language=language_display,
+                                )
+                            except Exception as e:
+                                ai_response = f"⚠️ Could not get a response: {str(e)[:200]}"
+                
+                        st.markdown(ai_response)
+                        st.session_state["chat_messages"].append({"role": "assistant", "content": ai_response})
+
+            # Chat input sits OUTSIDE the scrollable container, pinned at the bottom
+            if user_question := st.chat_input("Ask about your code or the review..."):
+                st.session_state["chat_messages"].append({"role": "user", "content": user_question})
+                st.rerun()
+            
+            
 # ─── Review History Dashboard (Persistent — SQLite) ─────────────────────────
 
 db_history = get_all_reviews()
