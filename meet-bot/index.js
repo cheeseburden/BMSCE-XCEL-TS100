@@ -1,15 +1,11 @@
 /**
  * Curia AI — Google Meet Bot
- * 
+ *
  * Joins a Google Meet as a guest, enables captions,
  * scrapes caption text, and sends the transcript to the backend.
- * 
+ *
  * Usage:
  *   node index.js <meet-url> [meeting-id]
- *
- * Examples:
- *   node index.js https://meet.google.com/abc-defg-hij
- *   node index.js https://meet.google.com/abc-defg-hij 664f1a2b3c4d5e6f7a8b9c0d
  */
 
 require('dotenv').config();
@@ -18,92 +14,110 @@ const axios = require('axios');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001';
 const BOT_NAME = process.env.BOT_NAME || 'Curia AI Note-taker';
-
-// Duration to stay in meeting (ms). Default: 60 minutes
 const MAX_DURATION = parseInt(process.env.MAX_DURATION || '3600000');
 
+async function delay(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
+
+async function clickByText(page, selector, text) {
+    const els = await page.$$(selector);
+    for (const el of els) {
+        const t = await el.evaluate(e => e.textContent);
+        if (t && t.trim().includes(text)) {
+            await el.click();
+            return true;
+        }
+    }
+    return false;
+}
+
 async function joinMeeting(meetUrl) {
-    console.log(`🤖 Curia AI Bot starting...`);
+    console.log('🤖 Curia AI Bot starting...');
     console.log(`📍 Meet URL: ${meetUrl}`);
     console.log(`👤 Bot name: ${BOT_NAME}`);
 
     const browser = await puppeteer.launch({
-        headless: false, // Set to true for production
+        headless: false,
         args: [
-            '--use-fake-ui-for-media-stream',  // Auto-allow mic/camera
-            '--use-fake-device-for-media-stream', // Use fake devices
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
             '--disable-web-security',
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-features=TranslateUI',
             '--window-size=1280,720',
         ]
     });
 
     const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 720 });
 
-    // Grant permissions
     const context = browser.defaultBrowserContext();
     await context.overridePermissions('https://meet.google.com', [
         'microphone', 'camera', 'notifications'
     ]);
 
     try {
-        // 1. Navigate to the Meet URL
+        // 1. Navigate
         console.log('📡 Navigating to meeting...');
         await page.goto(meetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await delay(3000);
 
-        // 2. Wait for the "Your name" input field (guest join)
-        console.log('⏳ Waiting for guest join form...');
-        await page.waitForSelector('input[placeholder="Your name"]', { timeout: 15000 });
-
-        // 3. Enter bot name
-        await page.click('input[placeholder="Your name"]', { clickCount: 3 });
-        await page.type('input[placeholder="Your name"]', BOT_NAME);
-        console.log(`✏️  Entered name: ${BOT_NAME}`);
-
-        // 4. Turn off microphone and camera before joining
-        // These are toggle buttons — click to disable
-        try {
-            // Mic button
-            const micButton = await page.$('[data-is-muted="false"][aria-label*="microphone" i]');
-            if (micButton) await micButton.click();
-
-            // Camera button  
-            const camButton = await page.$('[data-is-muted="false"][aria-label*="camera" i]');
-            if (camButton) await camButton.click();
-        } catch (e) {
-            console.log('⚠️  Could not toggle mic/cam (may already be off)');
+        // 2. Handle "Continue without microphone and camera" modal
+        console.log('🔍 Checking for media permission modal...');
+        const dismissed = await clickByText(page, 'button', 'Continue without microphone and camera');
+        if (dismissed) {
+            console.log('✅ Dismissed media permission modal');
+            await delay(2000);
         }
 
-        // 5. Click "Ask to join" or "Join now"
-        console.log('🚪 Clicking join button...');
-        const joinButton = await page.waitForSelector(
-            'button[jsname="Qx7uuf"], [data-idom-class*="join"]',
-            { timeout: 10000 }
+        // 3. Enter bot name
+        console.log('⏳ Looking for name input...');
+        const nameInput = await page.waitForSelector(
+            'input[aria-label="Your name"], input[placeholder="Your name"]',
+            { timeout: 15000 }
         );
-        if (joinButton) await joinButton.click();
+        await nameInput.click({ clickCount: 3 });
+        await nameInput.type(BOT_NAME, { delay: 50 });
+        console.log(`✏️  Entered name: ${BOT_NAME}`);
+        await delay(1000);
 
-        // 6. Wait to be admitted (host may need to approve)
-        console.log('⏳ Waiting to be admitted to the meeting...');
+        // 4. Click "Ask to join"
+        console.log('🚪 Clicking "Ask to join"...');
+        const clicked = await clickByText(page, 'button', 'Ask to join');
+        if (!clicked) {
+            // Fallback: try "Join now"
+            const clicked2 = await clickByText(page, 'button', 'Join now');
+            if (!clicked2) {
+                throw new Error('Could not find join button');
+            }
+        }
+        console.log('⏳ Waiting to be admitted...');
+
+        // 5. Wait to be admitted (host admits the bot)
         await page.waitForFunction(() => {
-            // Check if we're in the meeting (caption button or participants visible)
-            return document.querySelector('[aria-label*="captions" i]') ||
-                   document.querySelector('[aria-label*="Turn on captions" i]');
-        }, { timeout: 120000 }); // Wait up to 2 minutes
+            const btns = Array.from(document.querySelectorAll('button'));
+            return btns.some(b => {
+                const label = b.getAttribute('aria-label') || '';
+                return label.toLowerCase().includes('caption');
+            });
+        }, { timeout: 300000 }); // Wait up to 5 minutes
 
         console.log('✅ Joined the meeting!');
+        await delay(2000);
 
-        // 7. Enable captions
+        // 6. Enable captions
         console.log('📝 Enabling captions...');
-        const captionBtn = await page.$('[aria-label*="captions" i]');
+        const captionBtn = await page.$('button[aria-label*="caption" i]');
         if (captionBtn) {
             await captionBtn.click();
             console.log('✅ Captions enabled');
+        } else {
+            console.log('⚠️ Could not find caption button — will try scraping anyway');
         }
 
-        // 8. Start scraping captions
-        console.log('🎙️  Scraping captions...');
+        // 7. Scrape captions
+        console.log('🎙️  Scraping captions... (press Ctrl+C to stop)');
         const transcript = await scrapeCaptions(page);
 
         return transcript;
@@ -117,52 +131,48 @@ async function joinMeeting(meetUrl) {
 }
 
 async function scrapeCaptions(page) {
-    // Use a MutationObserver to capture captions in real-time
     const captionData = await page.evaluate((maxDuration) => {
         return new Promise((resolve) => {
             const lines = [];
             let lastText = '';
-            let timeoutId;
 
-            // Set max duration
             const durationTimeout = setTimeout(() => {
                 resolve(lines.join('\n'));
             }, maxDuration);
 
-            // Watch for caption changes
             const observer = new MutationObserver(() => {
-                // Google Meet renders captions in specific containers
-                const captionElements = document.querySelectorAll(
-                    '[class*="caption"], [class*="subtitle"], [jsname*="caption"]'
+                // Google Meet caption containers
+                const captionEls = document.querySelectorAll(
+                    '[class*="Caption"], [class*="caption"], [data-message-text], [jsname="YSg1Fc"]'
                 );
-
-                captionElements.forEach(el => {
+                captionEls.forEach(el => {
                     const text = el.textContent?.trim();
-                    if (text && text !== lastText && text.length > 0) {
+                    if (text && text !== lastText && text.length > 2) {
                         lastText = text;
-                        lines.push(text);
+                        const timestamp = new Date().toLocaleTimeString();
+                        lines.push(`[${timestamp}] ${text}`);
+                        console.log(`Caption: ${text}`);
                     }
                 });
             });
 
-            // Observe the body for any DOM changes (captions are dynamically injected)
             observer.observe(document.body, {
                 childList: true,
                 subtree: true,
                 characterData: true
             });
 
-            // Also check if user hangs up (meeting ends)
-            const checkEnded = setInterval(() => {
-                const endedIndicator = document.querySelector('[data-call-ended]') ||
-                    document.querySelector('[jsname="r4nke"]'); // "Return to home screen"
-                if (endedIndicator) {
-                    clearInterval(checkEnded);
+            // Detect meeting end
+            const checkEnd = setInterval(() => {
+                const ended = document.querySelector('[data-call-ended]') ||
+                    document.querySelector('[jsname="r4nke"]');
+                if (ended) {
+                    clearInterval(checkEnd);
                     clearTimeout(durationTimeout);
                     observer.disconnect();
                     resolve(lines.join('\n'));
                 }
-            }, 2000);
+            }, 3000);
         });
     }, MAX_DURATION);
 
@@ -170,26 +180,27 @@ async function scrapeCaptions(page) {
 }
 
 async function sendTranscript(meetingId, transcript) {
-    if (!meetingId) {
-        console.log('📋 No meeting ID provided. Transcript saved locally only.');
-        console.log('--- TRANSCRIPT ---');
-        console.log(transcript);
+    if (!meetingId || !transcript) {
+        console.log('\n📋 Transcript:');
+        console.log(transcript || '(empty)');
+        // Save locally
+        const fs = require('fs');
+        const filename = `transcript_${Date.now()}.txt`;
+        fs.writeFileSync(filename, transcript || '');
+        console.log(`💾 Saved locally as ${filename}`);
         return;
     }
 
     try {
-        console.log(`📤 Sending transcript to backend for meeting ${meetingId}...`);
-        await axios.post(`${BACKEND_URL}/api/meetings/${meetingId}/transcript`, {
-            transcript
-        });
+        console.log(`📤 Sending transcript to backend (meeting ${meetingId})...`);
+        await axios.post(`${BACKEND_URL}/api/meetings/${meetingId}/transcript`, { transcript });
         console.log('✅ Transcript saved to backend');
     } catch (error) {
-        console.error('❌ Failed to send transcript:', error.message);
-        // Save locally as fallback
+        console.error('❌ Failed to send:', error.message);
         const fs = require('fs');
         const filename = `transcript_${Date.now()}.txt`;
         fs.writeFileSync(filename, transcript);
-        console.log(`💾 Transcript saved locally as ${filename}`);
+        console.log(`💾 Saved locally as ${filename}`);
     }
 }
 
@@ -198,20 +209,15 @@ async function sendTranscript(meetingId, transcript) {
     const meetUrl = process.argv[2];
     const meetingId = process.argv[3];
 
-    if (!meetUrl) {
+    if (!meetUrl || !meetUrl.includes('meet.google.com')) {
         console.log('Usage: node index.js <meet-url> [meeting-id]');
         console.log('Example: node index.js https://meet.google.com/abc-defg-hij');
         process.exit(1);
     }
 
-    if (!meetUrl.includes('meet.google.com')) {
-        console.error('❌ Invalid Google Meet URL');
-        process.exit(1);
-    }
-
     try {
         const transcript = await joinMeeting(meetUrl);
-        console.log(`\n📄 Captured ${transcript.split('\n').length} lines of transcript`);
+        console.log(`\n📄 Captured ${(transcript || '').split('\n').filter(Boolean).length} lines`);
         await sendTranscript(meetingId, transcript);
     } catch (error) {
         console.error('Bot failed:', error.message);

@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { hasJiraConfig, isAuthenticated, loginDemo } from "@/lib/session";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -14,29 +15,26 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (isAuthenticated()) {
+      navigate(hasJiraConfig() ? "/dashboard" : "/settings", { replace: true });
+    }
+  }, [navigate]);
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    // Fake auth — accept any non-empty credentials
     setTimeout(() => {
       if (formData.email && formData.password.length >= 4) {
-        const fakeUser = {
-          _id: "user_001",
-          name: formData.email.split("@")[0],
-          email: formData.email,
-        };
-        const fakeToken = btoa(JSON.stringify({ id: fakeUser._id, exp: Date.now() / 1000 + 86400 }));
-
-        localStorage.setItem("token", fakeToken);
-        localStorage.setItem("user", JSON.stringify(fakeUser));
-        navigate("/dashboard");
+        loginDemo(formData.email);
+        navigate(hasJiraConfig() ? "/dashboard" : "/settings");
       } else {
         setError("Please enter a valid email and password (min 4 chars)");
       }
       setLoading(false);
-    }, 500);
+    }, 300);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,76 +46,55 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-background/80 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-background to-background"></div>
-      
-      <Card className="w-full max-w-md relative backdrop-blur-sm border-primary/20 shadow-2xl animate-fade-in">
-        <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-r from-primary to-primary-glow flex items-center justify-center shadow-glow">
-            <span className="text-2xl font-bold text-primary-foreground">C</span>
-          </div>
-          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-            Welcome Back
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Sign in to your curia.AI account
-          </CardDescription>
+    <div className="min-h-screen flex items-center justify-center px-6 py-16">
+      <Card className="surface w-full max-w-md">
+        <CardHeader className="space-y-2">
+          <CardTitle className="text-2xl font-semibold">Welcome back</CardTitle>
+          <CardDescription>Sign in to continue to Curia AI.</CardDescription>
         </CardHeader>
-        
+
         <CardContent className="space-y-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="p-3 rounded-md bg-destructive/15 border border-destructive/50 text-destructive text-sm">
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {error}
               </div>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 name="email"
                 type="email"
-                placeholder="Enter your email"
+                placeholder="you@company.com"
                 value={formData.email}
                 onChange={handleChange}
                 required
-                className="bg-background/50 border-border/50 focus:border-primary/50 transition-all duration-300"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
                 name="password"
                 type="password"
-                placeholder="Enter your password"
+                placeholder="Minimum 4 characters"
                 value={formData.password}
                 onChange={handleChange}
                 required
-                className="bg-background/50 border-border/50 focus:border-primary/50 transition-all duration-300"
               />
             </div>
-            
-            <Button 
-              type="submit" 
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-primary to-primary-glow hover:shadow-glow transition-all duration-300 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
+
+            <Button type="submit" disabled={loading} className="w-full cta-button">
               {loading ? "Signing In..." : "Sign In"}
             </Button>
           </form>
-          
-          <div className="text-center text-sm text-muted-foreground">
-            Don't have an account?{" "}
-            <Link 
-              to="/signup" 
-              className="text-primary hover:text-primary-glow transition-colors duration-300 font-medium"
-            >
-              Create account
-            </Link>
-          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Demo login accepts any email + password (min 4 characters).
+          </p>
         </CardContent>
       </Card>
     </div>

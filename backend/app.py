@@ -1,12 +1,16 @@
 from flask import Flask, jsonify, request
-from flask_cors import CORS
+try:
+    from flask_cors import CORS
+except Exception:
+    CORS = None
 from transcriptSummarizer.summarize import summarize_json
 from jira_integration import create_jira_issue
 import tempfile
 import os
 
 app = Flask(__name__)
-CORS(app)
+if CORS:
+    CORS(app)
 
 def create_jira_issues_from_summary(structured_data, jira_config=None):
     """
@@ -15,13 +19,14 @@ def create_jira_issues_from_summary(structured_data, jira_config=None):
     """
     if not structured_data or "action_items" not in structured_data:
         print("No action items found in the provided data.")
-        return
+        return structured_data
 
     if not jira_config:
         print("No Jira config provided — skipping ticket creation.")
-        return
+        return structured_data
 
     action_items = structured_data["action_items"]
+    jira_errors = []
     for item in action_items:
         # Normalize field names (Gemini may use different keys)
         jira_item = {
@@ -30,7 +35,18 @@ def create_jira_issues_from_summary(structured_data, jira_config=None):
             "Priority": item.get("Priority") or item.get("priority", "Medium"),
             "Due date": item.get("Due date") or item.get("due_by", "N/A")
         }
-        create_jira_issue(jira_item, jira_config)
+        result = create_jira_issue(jira_item, jira_config)
+        if result:
+            item["jiraIssueKey"] = result
+        else:
+            item["jiraError"] = "Failed to create Jira issue"
+            jira_errors.append({
+                "summary": jira_item["Summary"],
+                "error": "Failed to create Jira issue"
+            })
+    if jira_errors:
+        structured_data["jira_errors"] = jira_errors
+    return structured_data
 
 
 @app.route('/analyze-transcript', methods=['POST'])
@@ -60,15 +76,18 @@ def analyze_transcript():
     try:
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8') as tf:
             tf.write(transcript_text)
+            tf.close()
             temp_file = tf.name
 
         structured_data = summarize_json(temp_file)
 
         if structured_data is None:
-            return jsonify({"error": "Failed to parse LLM output into JSON."}), 500
+            return jsonify({
+                "error": "AI summarization failed. Check GEMINI_API_KEY and model availability."
+            }), 500
 
         # Create Jira issues using per-request config
-        create_jira_issues_from_summary(structured_data, jira_config)
+        structured_data = create_jira_issues_from_summary(structured_data, jira_config)
 
         return jsonify(structured_data)
 

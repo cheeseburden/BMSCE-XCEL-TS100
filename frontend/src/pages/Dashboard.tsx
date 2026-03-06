@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ExternalLink, Calendar, Brain, CheckCircle, Loader2, Trash2, LogOut, Settings } from "lucide-react";
-import meetingService from "@/services/meetingService";
 import { useToast } from "@/hooks/use-toast";
+import meetingService from "@/services/meetingService";
+import { logout } from "@/lib/session";
 
 interface Meeting {
   _id: string;
@@ -17,10 +17,9 @@ interface Meeting {
   jiraIssuesCreated: boolean;
   summary?: {
     decisions: string[];
-    action_items: any[];
+    action_items: { jiraIssueKey?: string }[];
   };
   createdAt: string;
-  updatedAt: string;
 }
 
 const Dashboard = () => {
@@ -29,11 +28,10 @@ const Dashboard = () => {
 
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showNewMeeting, setShowNewMeeting] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newMeetUrl, setNewMeetUrl] = useState("");
-  const [newTranscript, setNewTranscript] = useState("");
   const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState("");
+  const [meetUrl, setMeetUrl] = useState("");
+  const [transcript, setTranscript] = useState("");
 
   useEffect(() => {
     fetchMeetings();
@@ -43,9 +41,7 @@ const Dashboard = () => {
     try {
       setLoading(true);
       const data = await meetingService.getMeetings();
-      if (data.success) {
-        setMeetings(data.meetings);
-      }
+      if (data.success) setMeetings(data.meetings);
     } catch (error) {
       toast({ title: "Error", description: "Failed to load meetings", variant: "destructive" });
     } finally {
@@ -53,28 +49,24 @@ const Dashboard = () => {
     }
   };
 
-  const handleCreateMeeting = async (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!title.trim()) return;
 
     try {
       setCreating(true);
       const data = await meetingService.createMeeting({
-        title: newTitle,
-        meetUrl: newMeetUrl || undefined,
-        transcript: newTranscript || undefined
+        title: title.trim(),
+        meetUrl: meetUrl || undefined,
+        transcript: transcript || undefined
       });
-
       if (data.success) {
-        toast({ title: "Success", description: "Meeting created!" });
-        setNewTitle("");
-        setNewMeetUrl("");
-        setNewTranscript("");
-        setShowNewMeeting(false);
-        fetchMeetings();
-
-        // Navigate to the meeting detail if transcript was provided
-        if (newTranscript) {
+        toast({ title: "Meeting created", description: "Ready to analyze the transcript." });
+        setTitle("");
+        setMeetUrl("");
+        setTranscript("");
+        await fetchMeetings();
+        if (data.meeting?._id) {
           navigate(`/meeting/${data.meeting._id}`);
         }
       }
@@ -88,223 +80,141 @@ const Dashboard = () => {
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("Delete this meeting?")) return;
-
     try {
       await meetingService.deleteMeeting(id);
-      toast({ title: "Deleted", description: "Meeting removed" });
+      toast({ title: "Deleted", description: "Meeting removed." });
       fetchMeetings();
     } catch (error) {
-      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to delete meeting.", variant: "destructive" });
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    navigate("/login");
-  };
-
-  const getStatusBadge = (meeting: Meeting) => {
-    if (meeting.status === "analyzed") {
-      return { label: "Analyzed", className: "bg-green-500/20 text-green-400" };
-    }
-    if (meeting.status === "completed") {
-      return { label: "Has Transcript", className: "bg-blue-500/20 text-blue-400" };
-    }
-    return { label: "Scheduled", className: "bg-yellow-500/20 text-yellow-400" };
-  };
-
-  const getTimeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
+  const statusBadge = (status: string) => {
+    if (status === "analyzed") return "bg-green-100 text-green-700";
+    if (status === "completed") return "bg-blue-100 text-blue-700";
+    return "bg-yellow-100 text-yellow-700";
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-background/80">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background"></div>
-
-      <div className="relative z-10 container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8 flex items-start justify-between">
+    <div className="min-h-screen px-6 py-10">
+      <div className="container mx-auto space-y-8">
+        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent mb-2">
-              Dashboard
-            </h1>
-            <p className="text-muted-foreground">
-              Manage meetings, analyze transcripts, and auto-create Jira tasks
+            <p className="text-sm text-muted-foreground">Curia AI</p>
+            <h1 className="text-3xl font-semibold">Meetings</h1>
+            <p className="text-sm text-muted-foreground">
+              Create meetings, add transcripts, analyze into Jira tickets.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => navigate("/settings")} className="text-muted-foreground hover:text-primary">
-              <Settings className="h-4 w-4 mr-2" /> Settings
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/settings")}>
+              Jira Settings
             </Button>
-            <Button variant="ghost" onClick={handleLogout} className="text-muted-foreground hover:text-red-400">
-              <LogOut className="h-4 w-4 mr-2" /> Logout
+            <Button
+              variant="ghost"
+              onClick={() => {
+                logout();
+                navigate("/login");
+              }}
+            >
+              Logout
             </Button>
           </div>
-        </div>
+        </header>
 
-        {/* New Meeting Section */}
-        <Card className="mb-8 border-primary/20 shadow-xl backdrop-blur-sm">
+        <Card className="surface">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-primary" />
-              New Meeting
-            </CardTitle>
-            <CardDescription>
-              Create a meeting and paste a transcript to get AI-powered summaries and Jira tickets
-            </CardDescription>
+            <CardTitle>New Meeting</CardTitle>
+            <CardDescription>Create a meeting and optionally paste a transcript.</CardDescription>
           </CardHeader>
           <CardContent>
-            {!showNewMeeting ? (
-              <Button
-                onClick={() => setShowNewMeeting(true)}
-                className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-glow transition-all duration-300 hover:scale-[1.02]"
-              >
-                <Plus className="h-4 w-4 mr-2" /> Create Meeting
-              </Button>
-            ) : (
-              <form onSubmit={handleCreateMeeting} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="title">Meeting Title *</Label>
-                    <Input
-                      id="title"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      placeholder="e.g. Sprint Planning - March 6"
-                      required
-                      className="bg-background/50 border-border/50"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="meetUrl">Google Meet URL (optional)</Label>
-                    <Input
-                      id="meetUrl"
-                      value={newMeetUrl}
-                      onChange={(e) => setNewMeetUrl(e.target.value)}
-                      placeholder="https://meet.google.com/..."
-                      className="bg-background/50 border-border/50"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="transcript">Paste Transcript (optional — can add later)</Label>
-                  <Textarea
-                    id="transcript"
-                    value={newTranscript}
-                    onChange={(e) => setNewTranscript(e.target.value)}
-                    placeholder="Paste the meeting transcript here..."
-                    rows={6}
-                    className="bg-background/50 border-border/50 font-mono text-sm"
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="title">Meeting Title</Label>
+                  <Input
+                    id="title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Sprint Planning - March 6"
+                    required
                   />
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="submit"
-                    disabled={creating}
-                    className="bg-gradient-to-r from-primary to-primary-glow hover:shadow-glow transition-all duration-300"
-                  >
-                    {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                    Create Meeting
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setShowNewMeeting(false)}>
-                    Cancel
-                  </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="meetUrl">Meet URL (optional)</Label>
+                  <Input
+                    id="meetUrl"
+                    value={meetUrl}
+                    onChange={(e) => setMeetUrl(e.target.value)}
+                    placeholder="https://meet.google.com/..."
+                  />
                 </div>
-              </form>
-            )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="transcript">Transcript (optional)</Label>
+                <Textarea
+                  id="transcript"
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  placeholder="Paste the meeting transcript here..."
+                  rows={5}
+                />
+              </div>
+              <Button type="submit" className="cta-button" disabled={creating}>
+                {creating ? "Creating..." : "Create Meeting"}
+              </Button>
+            </form>
           </CardContent>
         </Card>
 
-        {/* Meetings Grid */}
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-foreground">
-            Recent Meetings {!loading && `(${meetings.length})`}
-          </h2>
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Recent Meetings</h2>
+            <span className="text-sm text-muted-foreground">{meetings.length} total</span>
+          </div>
 
           {loading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
+            <div className="surface p-6 text-sm text-muted-foreground">Loading meetings...</div>
           ) : meetings.length === 0 ? (
-            <Card className="border-dashed border-primary/20">
-              <CardContent className="text-center py-12">
-                <Brain className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground text-lg mb-2">No meetings yet</p>
-                <p className="text-sm text-muted-foreground">Create a meeting above to get started</p>
-              </CardContent>
-            </Card>
+            <div className="surface p-6 text-sm text-muted-foreground">
+              No meetings yet. Create your first meeting above.
+            </div>
           ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {meetings.map((meeting) => {
-                const status = getStatusBadge(meeting);
-                const actionCount = meeting.summary?.action_items?.length || 0;
-                const decisionCount = meeting.summary?.decisions?.length || 0;
-
-                return (
-                  <Card
-                    key={meeting._id}
-                    className="border-primary/20 shadow-xl backdrop-blur-sm hover:shadow-2xl hover:border-primary/40 transition-all duration-300 hover:scale-[1.02] cursor-pointer group"
-                    onClick={() => navigate(`/meeting/${meeting._id}`)}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <CardTitle className="text-lg group-hover:text-primary transition-colors line-clamp-1">
-                          {meeting.title}
-                        </CardTitle>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400"
-                            onClick={(e) => handleDelete(meeting._id, e)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                          <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                        </div>
-                      </div>
-                      <CardDescription className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {getTimeAgo(meeting.updatedAt || meeting.createdAt)}
-                      </CardDescription>
-                    </CardHeader>
-
-                    <CardContent className="space-y-3">
-                      {meeting.status === "analyzed" && (
-                        <div className="flex items-center gap-4 text-sm">
-                          <span className="flex items-center gap-1">
-                            <CheckCircle className="h-3.5 w-3.5 text-green-400" />
-                            {decisionCount} decisions
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Brain className="h-3.5 w-3.5 text-primary" />
-                            {actionCount} tasks
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${status.className}`}>
-                          {status.label}
-                        </span>
-                        {meeting.jiraIssuesCreated && (
-                          <span className="text-xs text-muted-foreground">🎫 Jira synced</span>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+            <div className="grid gap-4 md:grid-cols-2">
+              {meetings.map((meeting) => (
+                <Card
+                  key={meeting._id}
+                  className="surface cursor-pointer transition hover:-translate-y-0.5"
+                  onClick={() => navigate(`/meeting/${meeting._id}`)}
+                >
+                  <CardHeader className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-lg">{meeting.title}</CardTitle>
+                      <span className={`rounded-full px-2 py-1 text-xs ${statusBadge(meeting.status)}`}>
+                        {meeting.status}
+                      </span>
+                    </div>
+                    <CardDescription>
+                      {new Date(meeting.createdAt).toLocaleDateString()}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex items-center justify-between">
+                    <div className="text-xs text-muted-foreground">
+                      {meeting.summary?.action_items?.length || 0} action items
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => handleDelete(meeting._id, e)}
+                    >
+                      Delete
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import MeetingDetail from "./pages/MeetingDetail";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import { RequireAuth, RequireJira } from "./components/RouteGuard";
 
 const queryClient = new QueryClient();
 
@@ -23,9 +24,34 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/meeting/:id" element={<MeetingDetail />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAuth>
+                <RequireJira>
+                  <Dashboard />
+                </RequireJira>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/meeting/:id"
+            element={
+              <RequireAuth>
+                <RequireJira>
+                  <MeetingDetail />
+                </RequireJira>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <RequireAuth>
+                <Settings />
+              </RequireAuth>
+            }
+          />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -35,4 +61,3 @@ const App = () => (
 );
 
 export default App;
-

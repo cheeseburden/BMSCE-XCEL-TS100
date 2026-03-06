@@ -1,4 +1,7 @@
-const API_URL = 'http://localhost:5001/api/meetings';
+import { API_BASE_URL } from "@/config/api";
+import { getJiraConfig } from "@/lib/session";
+
+const API_URL = `${API_BASE_URL}/api/meetings`;
 
 class MeetingService {
     private getHeaders(): HeadersInit {
@@ -7,11 +10,6 @@ class MeetingService {
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         };
-    }
-
-    private getJiraConfig() {
-        const stored = localStorage.getItem('jiraConfig');
-        return stored ? JSON.parse(stored) : null;
     }
 
     // Get all meetings
@@ -69,11 +67,12 @@ class MeetingService {
     // Analyze a meeting (AI summarization + Jira)
     async analyzeMeeting(id: string) {
         try {
-            const jiraConfig = this.getJiraConfig();
+            const jiraConfig = getJiraConfig();
+            const body = jiraConfig ? { jiraConfig } : {};
             const response = await fetch(`${API_URL}/${id}/analyze`, {
                 method: 'POST',
                 headers: this.getHeaders(),
-                body: JSON.stringify({ jiraConfig })
+                body: JSON.stringify(body)
             });
             return await response.json();
         } catch (error) {

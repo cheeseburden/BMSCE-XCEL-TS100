@@ -1,146 +1,131 @@
-# Curia AI — Intelligent Meeting Assistant
+# Curia AI — Meeting → Jira Automation
 
-> **AI-powered meeting summarization with automatic Jira ticket creation**
+Curia AI turns meeting transcripts into structured decisions and action items, then creates Jira tickets automatically. The current build ships a clean web UI and a working backend pipeline (React → Node API → Flask AI → Jira).
 
-Curia AI records your meeting transcripts, uses Google Gemini to extract **key decisions** and **action items**, and automatically creates **Jira tickets** — so nothing falls through the cracks.
+The meeting bot is planned for a later phase; this README focuses on the existing workflow.
 
----
+**Highlights**
+1. Demo login (no backend auth)
+2. Jira credentials stored locally in the browser
+3. Transcript analysis with Gemini
+4. Jira tickets created and shown in the UI
 
-## 🏗️ Architecture
-
+**High-Level Flow**
+```mermaid
+flowchart LR
+  U[User] --> UI[Frontend (React)]
+  UI -->|Login (demo)| S[Local Session]
+  UI -->|Save Jira Config| LS[LocalStorage]
+  UI -->|Create Meeting + Transcript| API[Node API /api/meetings]
+  API --> STORE[Meeting Store (JSON)]
+  UI -->|Analyze Meeting| API
+  API -->|POST transcript + Jira config| AI[Flask AI Service]
+  AI -->|Summarize + Extract Actions| LLM[Gemini API]
+  AI -->|Create Jira Issues| JIRA[Jira Cloud]
+  AI -->|Summary + Jira Issue Keys| API
+  API --> STORE
+  UI -->|Fetch Meeting Details| API
+  UI -->|Show Decisions + Action Items + Jira Links| U
 ```
-┌──────────────┐     ┌───────────────────┐     ┌──────────────────┐
-│   Frontend   │────▶│  Express Backend   │────▶│  Flask AI Engine  │
-│  React+Vite  │     │  (Auth + Meetings) │     │  (Gemini + Jira)  │
-│  Port 5173   │     │    Port 5001       │     │    Port 5002      │
-└──────────────┘     └───────────────────┘     └──────────────────┘
-                              │                         │
-                              ▼                         ▼
-                        ┌──────────┐            ┌──────────────┐
-                        │ MongoDB  │            │  Jira Cloud  │
-                        │  Atlas   │            │  (Atlassian) │
-                        └──────────┘            └──────────────┘
+
+**Transcript Analysis Flow**
+```mermaid
+flowchart TD
+  T[Transcript] --> C[Clean Transcript]
+  C --> G[Gemini Summarizer]
+  G --> P[Parse JSON]
+  P --> D[Decisions + Action Items]
+  D --> J[Create Jira Issues]
+  J --> R[Attach Jira Issue Keys]
 ```
 
-### Tech Stack
+**Repo Structure**
+1. `backend/` — Flask AI service (Gemini + Jira integration)
+2. `backend-node/` — Node API for meetings
+3. `frontend/` — React UI
+4. `samples/` — sample transcripts
 
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui |
-| **Auth Backend** | Node.js, Express, JWT, Mongoose |
-| **AI Backend** | Python, Flask, Google Gemini API |
-| **Database** | MongoDB Atlas |
-| **Integrations** | Jira Cloud REST API |
+## Setup
 
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Node.js** ≥ 18
-- **Python** ≥ 3.9
-- **MongoDB Atlas** account (free tier works)
-- **Google Gemini API key**
-- **Jira Cloud** account + API token
-
-### 1. Clone & Install
-
+### 1) Backend (Flask AI)
 ```bash
-git clone <repo-url>
-cd BMSCE-XCEL-TS100
-
-# Install Express backend
-cd backend-node
-npm install
-
-# Install Flask backend
-cd ../backend
-pip install -r requirements.txt
-
-# Install frontend
-cd ../frontend
-npm install
+cd /Users/hari/Documents/BMSCE-XCEL-TS100/backend
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m spacy download en_core_web_sm
 ```
 
-### 2. Configure Environment
-
-**`backend-node/.env`**
-```env
-MONGO_URI=mongodb+srv://<user>:<pass>@cluster.mongodb.net/curia-ai
-JWT_SECRET=your_jwt_secret
-PORT=5001
-FLASK_API_URL=http://localhost:5002
-```
-
-**`backend/.env`**
-```env
-GEMINI_API_KEY=your_gemini_api_key
-JIRA_URL=https://your-domain.atlassian.net
-JIRA_PROJECT_KEY=YOUR_PROJECT
-JIRA_EMAIL=your@email.com
-JIRA_API_TOKEN=your_jira_api_token
-```
-
-### 3. Run
-
-Open three terminal tabs:
-
+Set your Gemini API key:
 ```bash
-# Terminal 1: Express Backend
-cd backend-node && npm run dev
-
-# Terminal 2: Flask AI Backend
-cd backend && python app.py
-
-# Terminal 3: Frontend
-cd frontend && npm run dev
+export GEMINI_API_KEY="YOUR_KEY_HERE"
 ```
 
-Visit **http://localhost:5173** → Sign up → Create a meeting → Paste transcript → Analyze!
+Run Flask:
+```bash
+python app.py
+```
+Runs at `http://localhost:5002`
+
+### 2) Backend (Node API)
+```bash
+cd /Users/hari/Documents/BMSCE-XCEL-TS100/backend-node
+npm install
+npm run dev
+```
+Runs at `http://localhost:5001`
+
+### 3) Frontend (React)
+```bash
+cd /Users/hari/Documents/BMSCE-XCEL-TS100/frontend
+npm install
+npm run dev
+```
+Runs at `http://localhost:8080`
+
+The frontend uses a dev proxy to `/api` → `http://localhost:5001`.
+
+## Usage
+
+1. Open the frontend in your browser.
+2. Login with any email + password (min 4 chars).
+3. Go to **Jira Settings** and save:
+   - Jira URL (e.g., `https://yourteam.atlassian.net`)
+   - Project Key (e.g., `CURIA`)
+   - Jira Email
+   - Jira API Token
+   - Issue Type (optional, default: `Task`)
+4. Create a meeting and paste a transcript.
+5. Click **Analyze & Create Jira Tickets**.
+6. Jira keys will appear in the Action Items table and also in Jira itself.
+
+## Jira Notes
+1. The Issue Type must exist in your Jira project (common values: `Task`, `Story`).
+2. If Jira tickets fail to create, the UI will show an error banner with details.
+3. Re-run analysis after saving Jira settings; old meetings won’t have Jira keys until analyzed again.
+
+## Troubleshooting
+
+**Flask fails with `ModuleNotFoundError: flask_cors`**
+```bash
+cd /Users/hari/Documents/BMSCE-XCEL-TS100/backend
+python -m pip install -r requirements.txt
+```
+
+**AI summarization fails**
+- Make sure `GEMINI_API_KEY` is set.
+- Confirm your API key has access to `gemini-2.0-flash`.
+
+**Jira tickets not created**
+- Verify Jira URL, project key, email, API token.
+- Check Issue Type matches Jira project (e.g., `Task`).
+- Ensure the Jira account has permission to create issues.
+
+## Future Work
+- Meeting bot (auto-join, capture transcript)
+- Real authentication (backend-managed users)
+- Persistent meeting storage in a database
 
 ---
 
-## 📋 API Endpoints
-
-### Auth (`/api/auth`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/register` | Register new user |
-| POST | `/login` | Login |
-| GET | `/profile` | Get user profile |
-| PUT | `/profile` | Update profile |
-
-### Meetings (`/api/meetings`) — *Auth required*
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/` | Create meeting |
-| GET | `/` | List all meetings |
-| GET | `/:id` | Get meeting details |
-| PUT | `/:id` | Update meeting |
-| DELETE | `/:id` | Delete meeting |
-| POST | `/:id/transcript` | Add/update transcript |
-| POST | `/:id/analyze` | AI analyze + create Jira tickets |
-
-### AI Engine (`Flask :5002`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/analyze-transcript` | Process transcript → JSON summary |
-| GET | `/health` | Health check |
-
----
-
-## 🧠 How It Works
-
-1. **Create a meeting** in the dashboard
-2. **Paste the transcript** (or let the bot capture it)
-3. Click **"Analyze with AI"** → Gemini extracts:
-   - 📌 **Key Decisions**
-   - ✅ **Action Items** (with assignee, priority, due date)
-4. **Jira tickets** are automatically created for each action item
-
----
-
-## 👥 Team
-
-- Built at **BMSCE XCEL TS100 Hackathon**
+If you want changes to flows or a deeper architecture section, tell me and I’ll add it.

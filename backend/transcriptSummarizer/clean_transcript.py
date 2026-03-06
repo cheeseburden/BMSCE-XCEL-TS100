@@ -1,15 +1,23 @@
-'''can use better cleaning techniques which i will do in the upcoming versions'''
+"""Lightweight transcript cleaning with graceful fallbacks."""
 
+try:
+    from cleantext import clean as clean_text
+except Exception:  # pragma: no cover - optional dependency
+    def clean_text(text, **_kwargs):
+        return text
 
-from cleantext import clean
-import spacy
-
-# Load spaCy English model
-nlp = spacy.load("en_core_web_sm")
+try:
+    import spacy
+    try:
+        nlp = spacy.load("en_core_web_sm")
+    except Exception:
+        nlp = None
+except Exception:  # pragma: no cover - optional dependency
+    nlp = None
 
 def clean_transcript(text):
     # Step 1: Basic cleaning using clean-text
-    cleaned = clean(
+    cleaned = clean_text(
         text,
         fix_unicode=True,
         to_ascii=True,
@@ -23,18 +31,20 @@ def clean_transcript(text):
         no_punct=False         # Keep punctuation for sentence detection
     )
 
-    # Step 2: Remove filler words and repeated words using spaCy
-    doc = nlp(cleaned)
-    filtered_sentences = []
-    filler_words = {"um", "uh", "like", "you know", "i mean", "sort of", "kind of"}
+    if nlp:
+        # Step 2: Remove filler words using spaCy (if available)
+        doc = nlp(cleaned)
+        filtered_sentences = []
+        filler_words = {"um", "uh", "like", "you know", "i mean", "sort of", "kind of"}
 
-    for sent in doc.sents:
-        tokens = [token.text for token in sent if token.text.lower() not in filler_words]
-        filtered_sentences.append(" ".join(tokens))
+        for sent in doc.sents:
+            tokens = [token.text for token in sent if token.text.lower() not in filler_words]
+            filtered_sentences.append(" ".join(tokens))
+
+        cleaned = " ".join(filtered_sentences)
 
     # Step 3: Remove extra whitespace
-    final_cleaned = " ".join(filtered_sentences)
-    return final_cleaned.strip()
+    return " ".join(cleaned.split()).strip()
 
 if __name__ == "__main__":
     raw_transcript = """
@@ -45,4 +55,3 @@ if __name__ == "__main__":
     cleaned_transcript = clean_transcript(raw_transcript)
     print("\n--- Cleaned Transcript ---\n")
     print(cleaned_transcript)
-

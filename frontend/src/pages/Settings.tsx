@@ -4,15 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Save, CheckCircle, ExternalLink } from "lucide-react";
+import { ArrowLeft, CheckCircle, ExternalLink, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-interface JiraConfig {
-  jiraUrl: string;
-  jiraProjectKey: string;
-  jiraEmail: string;
-  jiraApiToken: string;
-}
+import { JiraConfig, getJiraConfig, saveJiraConfig } from "@/lib/session";
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -23,14 +17,14 @@ const Settings = () => {
     jiraProjectKey: "",
     jiraEmail: "",
     jiraApiToken: "",
+    jiraIssueType: "Task",
   });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    // Load existing config from localStorage
-    const stored = localStorage.getItem("jiraConfig");
+    const stored = getJiraConfig();
     if (stored) {
-      setConfig(JSON.parse(stored));
+      setConfig(prev => ({ ...prev, ...stored }));
       setSaved(true);
     }
   }, []);
@@ -45,43 +39,38 @@ const Settings = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem("jiraConfig", JSON.stringify(config));
+    const normalized = saveJiraConfig(config);
+    setConfig(normalized);
     setSaved(true);
     toast({ title: "Settings Saved", description: "Jira configuration updated successfully" });
+    navigate("/dashboard");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-background/80">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background"></div>
-
-      <div className="relative z-10 container mx-auto px-4 py-8 max-w-2xl">
-        {/* Header */}
-        <div className="mb-8">
-          <Button variant="ghost" onClick={() => navigate("/dashboard")} className="mb-4 hover:text-primary">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back to Dashboard
-          </Button>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-            Settings
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Configure your Jira integration to auto-create tickets from meeting action items
-          </p>
+    <div className="min-h-screen px-6 py-12">
+      <div className="container mx-auto max-w-2xl space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <Button variant="ghost" onClick={() => navigate("/dashboard")} className="mb-3">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Meetings
+            </Button>
+            <h1 className="text-3xl font-semibold">Jira Settings</h1>
+            <p className="text-sm text-muted-foreground">
+              Add your Jira workspace credentials to create tickets automatically.
+            </p>
+          </div>
         </div>
 
-        {/* Jira Config Card */}
-        <Card className="border-primary/20 shadow-xl backdrop-blur-sm">
+        <Card className="surface">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <img src="https://cdn.worldvectorlogo.com/logos/jira-1.svg" alt="Jira" className="h-5 w-5" />
-              Jira Configuration
-            </CardTitle>
+            <CardTitle>Connect Jira</CardTitle>
             <CardDescription>
-              Connect your Jira account so Curia AI can create tickets automatically.{" "}
+              Generate an API token from Atlassian and store it securely in your browser.
               <a
                 href="https://id.atlassian.com/manage-profile/security/api-tokens"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline inline-flex items-center gap-1"
+                className="ml-2 inline-flex items-center gap-1 text-primary"
               >
                 Get API token <ExternalLink className="h-3 w-3" />
               </a>
@@ -99,9 +88,7 @@ const Settings = () => {
                   value={config.jiraUrl}
                   onChange={handleChange}
                   required
-                  className="bg-background/50 border-border/50 focus:border-primary/50"
                 />
-                <p className="text-xs text-muted-foreground">Your Atlassian workspace URL</p>
               </div>
 
               <div className="space-y-2">
@@ -110,13 +97,12 @@ const Settings = () => {
                   id="jiraProjectKey"
                   name="jiraProjectKey"
                   type="text"
-                  placeholder="e.g. AIMEETING"
+                  placeholder="e.g. CURIA"
                   value={config.jiraProjectKey}
                   onChange={handleChange}
                   required
-                  className="bg-background/50 border-border/50 focus:border-primary/50 uppercase"
+                  className="uppercase"
                 />
-                <p className="text-xs text-muted-foreground">Found in your Jira project URL (the short code before issue numbers)</p>
               </div>
 
               <div className="space-y-2">
@@ -125,11 +111,10 @@ const Settings = () => {
                   id="jiraEmail"
                   name="jiraEmail"
                   type="email"
-                  placeholder="your@email.com"
+                  placeholder="you@company.com"
                   value={config.jiraEmail}
                   onChange={handleChange}
                   required
-                  className="bg-background/50 border-border/50 focus:border-primary/50"
                 />
               </div>
 
@@ -143,24 +128,33 @@ const Settings = () => {
                   value={config.jiraApiToken}
                   onChange={handleChange}
                   required
-                  className="bg-background/50 border-border/50 focus:border-primary/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="jiraIssueType">Issue Type</Label>
+                <Input
+                  id="jiraIssueType"
+                  name="jiraIssueType"
+                  type="text"
+                  placeholder="Task"
+                  value={config.jiraIssueType || ""}
+                  onChange={handleChange}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Generate at{" "}
-                  <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                    Atlassian API Tokens
-                  </a>
+                  Optional. Use the exact issue type name in your Jira project (e.g., Task, Story).
                 </p>
               </div>
 
-              <Button
-                type="submit"
-                className="w-full bg-gradient-to-r from-primary to-primary-glow hover:shadow-glow transition-all duration-300 hover:scale-[1.02]"
-              >
+              <Button type="submit" className="w-full cta-button">
                 {saved ? (
-                  <><CheckCircle className="h-4 w-4 mr-2" /> Saved</>
+                  <>
+                    <CheckCircle className="mr-2 h-4 w-4" /> Saved
+                  </>
                 ) : (
-                  <><Save className="h-4 w-4 mr-2" /> Save Configuration</>
+                  <>
+                    <Save className="mr-2 h-4 w-4" /> Save & Continue
+                  </>
                 )}
               </Button>
             </form>

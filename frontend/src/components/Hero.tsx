@@ -1,60 +1,74 @@
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 
 const Hero = () => {
   return (
-    <section className="min-h-screen flex items-center justify-center pt-20 px-6">
-      <div className="container mx-auto text-center">
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* Trust indicator */}
-          <div className="animate-fade-in">
-            <div className="inline-flex items-center space-x-2 bg-secondary/50 rounded-full px-4 py-2 border border-primary/20">
-              <Sparkles className="w-4 h-4 text-primary animate-float" />
-              <span className="text-sm text-muted-foreground">
-                Trusted by teams at innovative companies
-              </span>
-            </div>
+    <section className="relative overflow-hidden px-6 pb-16 pt-8">
+      <div className="container mx-auto grid gap-12 lg:grid-cols-2 lg:items-center">
+        <div className="space-y-8 animate-fade-in">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-4 py-2 text-sm text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-primary" />
+            Turn meetings into Jira tickets automatically
           </div>
 
-          {/* Main heading */}
-          <div className="space-y-6 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-            <h1 className="text-5xl md:text-7xl font-bold leading-tight">
-              The Future of <span className="text-primary glow-text">AI Meeting</span>
-              <br />
-              Automation
-              <br />
+          <div className="space-y-4">
+            <h1 className="text-4xl font-semibold leading-tight md:text-6xl">
+              Capture decisions. Ship action items.
+              <span className="block text-primary">No manual Jira work.</span>
             </h1>
-            
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              Transform your meetings into actionable tasks automatically. 
-              curia.AI listens, understands, and creates perfect project tickets without the manual work.
+            <p className="text-lg text-muted-foreground">
+              Curia AI analyzes meeting transcripts, extracts decisions and action items,
+              and creates Jira tickets with the right priority and owners.
             </p>
           </div>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in" style={{ animationDelay: "0.4s" }}>
-            <Button 
-              size="lg" 
-              className="hero-button text-lg px-8 py-6 group"
-            >
-              Start Free Trial
-              <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </Button>
-            
-            <Button 
-              variant="outline" 
-              size="lg" 
-              className="text-lg px-8 py-6 border-primary/30 hover:bg-primary/10"
-            >
-              Watch Demo
-            </Button>
+          <div className="flex flex-wrap gap-3">
+            <Link to="/login">
+              <Button size="lg" className="cta-button">
+                Get Started
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link to="/login">
+              <Button size="lg" variant="outline">
+                Sign In
+              </Button>
+            </Link>
           </div>
 
-          {/* Supporting text */}
-          <div className="animate-fade-in" style={{ animationDelay: "0.6s" }}>
-            <p className="text-sm text-muted-foreground">
-              No credit card required • 14-day free trial • Setup in 2 minutes
-            </p>
+          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+              Jira tickets created in seconds
+            </span>
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+              Works with any transcript
+            </span>
+          </div>
+        </div>
+
+        <div className="surface p-8 animate-slide-right">
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Transcript</p>
+              <p className="mt-2 text-sm text-slate-600">
+                “Let’s ship the onboarding flow this week. Sam will finalize the UI by Friday.”
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-secondary/60 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Extracted Action</p>
+              <p className="mt-2 text-sm font-medium">Finalize onboarding UI</p>
+              <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                <span>Assignee: Sam</span>
+                <span className="rounded-full bg-primary/10 px-2 py-1 text-primary">High</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3">
+              <span className="text-sm font-medium">Jira Issue</span>
+              <span className="text-sm text-primary">CURIA-128</span>
+            </div>
           </div>
         </div>
       </div>

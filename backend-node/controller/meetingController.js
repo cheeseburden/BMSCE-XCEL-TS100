@@ -1,70 +1,45 @@
-const Meeting = require('../models/Meeting');
+const store = require('../store/meetingStore');
 const axios = require('axios');
 
 const FLASK_API_URL = process.env.FLASK_API_URL || 'http://localhost:5002';
 
-// Fake user ID for simplified auth
-const FAKE_USER_ID = '000000000000000000000001';
+const hasCompleteJiraConfig = (config) => {
+    if (!config || typeof config !== 'object') return false;
+    const { jiraUrl, jiraProjectKey, jiraEmail, jiraApiToken } = config;
+    return Boolean(jiraUrl && jiraProjectKey && jiraEmail && jiraApiToken);
+};
 
-// @desc    Create a new meeting
-// @route   POST /api/meetings
-// @access  Private
+// Create a new meeting
 const createMeeting = async (req, res) => {
     try {
         const { title, meetUrl, transcript } = req.body;
-        const userId = req.user?._id || FAKE_USER_ID;
-
-        const meeting = await Meeting.create({
-            title,
-            meetUrl,
-            transcript: transcript || '',
-            status: transcript ? 'completed' : 'scheduled',
-            createdBy: userId
-        });
-
-        res.status(201).json({
-            success: true,
-            message: 'Meeting created successfully',
-            meeting
-        });
+        const meeting = store.create({ title, meetUrl, transcript });
+        res.status(201).json({ success: true, message: 'Meeting created', meeting });
     } catch (error) {
         console.error('Create meeting error:', error);
         res.status(500).json({ message: 'Error creating meeting', error: error.message });
     }
 };
 
-// @desc    Get all meetings for current user
-// @route   GET /api/meetings
-// @access  Private
+// Get all meetings
 const getMeetings = async (req, res) => {
     try {
-        const userId = req.user?._id || FAKE_USER_ID;
-        const meetings = await Meeting.find({ createdBy: userId })
-            .sort({ createdAt: -1 })
-            .select('-transcript');
-
-        res.json({
-            success: true,
-            count: meetings.length,
-            meetings
+        const meetings = store.findAll().map(m => {
+            const { transcript, ...rest } = m; // Don't send full transcript in list
+            return rest;
         });
+        res.json({ success: true, count: meetings.length, meetings });
     } catch (error) {
         console.error('Get meetings error:', error);
         res.status(500).json({ message: 'Error fetching meetings', error: error.message });
     }
 };
 
-// @desc    Get single meeting by ID
-// @route   GET /api/meetings/:id
-// @access  Private
+// Get single meeting
 const getMeetingById = async (req, res) => {
     try {
-        const meeting = await Meeting.findById(req.params.id);
-
-        if (!meeting) {
-            return res.status(404).json({ message: 'Meeting not found' });
-        }
-
+        const meeting = store.findById(req.params.id);
+        if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
         res.json({ success: true, meeting });
     } catch (error) {
         console.error('Get meeting error:', error);
@@ -72,150 +47,113 @@ const getMeetingById = async (req, res) => {
     }
 };
 
-// @desc    Update a meeting
-// @route   PUT /api/meetings/:id
-// @access  Private
+// Update a meeting
 const updateMeeting = async (req, res) => {
     try {
-        const meeting = await Meeting.findById(req.params.id);
+        const meeting = store.findById(req.params.id);
+        if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
 
-        if (!meeting) {
-            return res.status(404).json({ message: 'Meeting not found' });
-        }
+        const updates = {};
+        if (req.body.title) updates.title = req.body.title;
+        if (req.body.meetUrl) updates.meetUrl = req.body.meetUrl;
+        if (req.body.status) updates.status = req.body.status;
 
-        const { title, meetUrl, status } = req.body;
-        if (title) meeting.title = title;
-        if (meetUrl) meeting.meetUrl = meetUrl;
-        if (status) meeting.status = status;
-
-        const updatedMeeting = await meeting.save();
-        res.json({ success: true, meeting: updatedMeeting });
+        const updated = store.update(req.params.id, updates);
+        res.json({ success: true, meeting: updated });
     } catch (error) {
         console.error('Update meeting error:', error);
         res.status(500).json({ message: 'Error updating meeting', error: error.message });
     }
 };
 
-// @desc    Delete a meeting
-// @route   DELETE /api/meetings/:id
-// @access  Private
+// Delete a meeting
 const deleteMeeting = async (req, res) => {
     try {
-        const meeting = await Meeting.findByIdAndDelete(req.params.id);
-
-        if (!meeting) {
-            return res.status(404).json({ message: 'Meeting not found' });
-        }
-
-        res.json({ success: true, message: 'Meeting deleted successfully' });
+        const meeting = store.deleteById(req.params.id);
+        if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+        res.json({ success: true, message: 'Meeting deleted' });
     } catch (error) {
         console.error('Delete meeting error:', error);
         res.status(500).json({ message: 'Error deleting meeting', error: error.message });
     }
 };
 
-// @desc    Add/update transcript for a meeting
-// @route   POST /api/meetings/:id/transcript
-// @access  Private
+// Add transcript
 const addTranscript = async (req, res) => {
     try {
-        const meeting = await Meeting.findById(req.params.id);
-
-        if (!meeting) {
-            return res.status(404).json({ message: 'Meeting not found' });
-        }
+        const meeting = store.findById(req.params.id);
+        if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
 
         const { transcript } = req.body;
-        if (!transcript) {
-            return res.status(400).json({ message: 'Transcript text is required' });
-        }
+        if (!transcript) return res.status(400).json({ message: 'Transcript text is required' });
 
-        meeting.transcript = transcript;
-        meeting.status = 'completed';
-        const updatedMeeting = await meeting.save();
-
-        res.json({
-            success: true,
-            message: 'Transcript added successfully',
-            meeting: updatedMeeting
-        });
+        const updated = store.update(req.params.id, { transcript, status: 'completed' });
+        res.json({ success: true, message: 'Transcript added', meeting: updated });
     } catch (error) {
         console.error('Add transcript error:', error);
         res.status(500).json({ message: 'Error adding transcript', error: error.message });
     }
 };
 
-// @desc    Analyze meeting transcript with AI + create Jira tickets
-// @route   POST /api/meetings/:id/analyze
-// @access  Private
+// Analyze meeting with AI + create Jira tickets
 const analyzeMeeting = async (req, res) => {
     try {
-        const meeting = await Meeting.findById(req.params.id);
+        const meeting = store.findById(req.params.id);
+        if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+        if (!meeting.transcript) return res.status(400).json({ message: 'No transcript to analyze' });
 
-        if (!meeting) {
-            return res.status(404).json({ message: 'Meeting not found' });
-        }
-
-        if (!meeting.transcript) {
-            return res.status(400).json({ message: 'No transcript to analyze. Add a transcript first.' });
-        }
-
-        // Get Jira config from request body (sent by frontend from localStorage)
         const { jiraConfig } = req.body;
+        const useJira = hasCompleteJiraConfig(jiraConfig);
 
-        // Call Flask AI summarizer with Jira creds
-        const requestBody = {
-            transcript: meeting.transcript,
-            jiraConfig: jiraConfig || null
-        };
-
-        const flaskResponse = await axios.post(
-            `${FLASK_API_URL}/analyze-transcript`,
-            JSON.stringify(requestBody),
-            {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 180000 // 3 min timeout for AI processing
-            }
-        );
-
-        const structuredData = flaskResponse.data;
-
-        // Update meeting with AI results
-        meeting.summary = {
-            decisions: structuredData.decisions || [],
-            action_items: structuredData.action_items || []
-        };
-        meeting.status = 'analyzed';
-        meeting.jiraIssuesCreated = !!(jiraConfig && structuredData.action_items?.length);
-
-        const updatedMeeting = await meeting.save();
-
-        res.json({
-            success: true,
-            message: jiraConfig
-                ? 'Meeting analyzed and Jira tickets created'
-                : 'Meeting analyzed (no Jira config — configure in Settings)',
-            meeting: updatedMeeting
-        });
-    } catch (error) {
-        console.error('Analyze meeting error:', error);
-
-        if (error.code === 'ECONNREFUSED') {
-            return res.status(503).json({
-                message: 'AI service unavailable. Make sure Flask backend is running on port 5002.'
+        if (jiraConfig && !useJira) {
+            return res.status(400).json({
+                message: 'Incomplete Jira config. Provide jiraUrl, jiraProjectKey, jiraEmail, jiraApiToken.'
             });
         }
 
+        // Call Flask AI summarizer
+        const flaskResponse = await axios.post(
+            `${FLASK_API_URL}/analyze-transcript`,
+            { transcript: meeting.transcript, jiraConfig: useJira ? jiraConfig : null },
+            { headers: { 'Content-Type': 'application/json' }, timeout: 180000 }
+        );
+
+        const data = flaskResponse.data || {};
+        const actionItems = Array.isArray(data.action_items) ? data.action_items : [];
+        const jiraErrors = Array.isArray(data.jira_errors) ? data.jira_errors : [];
+        const hasJiraKeys = useJira && actionItems.some(item => item && item.jiraIssueKey);
+
+        // Update meeting with results
+        const updated = store.update(req.params.id, {
+            summary: {
+                decisions: data.decisions || [],
+                action_items: actionItems
+            },
+            status: 'analyzed',
+            jiraIssuesCreated: hasJiraKeys,
+            jiraErrors
+        });
+
+        const message = hasJiraKeys
+            ? 'Analyzed + Jira tickets created'
+            : jiraErrors.length
+                ? 'Analyzed (Jira errors found)'
+                : useJira
+                    ? 'Analyzed (no Jira tickets created)'
+                    : 'Analyzed (no Jira config)';
+
+        res.json({
+            success: true,
+            message,
+            meeting: updated
+        });
+    } catch (error) {
+        console.error('Analyze error:', error.message);
+        if (error.code === 'ECONNREFUSED') {
+            return res.status(503).json({ message: `Flask AI service not reachable at ${FLASK_API_URL}` });
+        }
         res.status(500).json({ message: 'Error analyzing meeting', error: error.message });
     }
 };
 
-module.exports = {
-    createMeeting,
-    getMeetings,
-    getMeetingById,
-    updateMeeting,
-    deleteMeeting,
-    addTranscript,
-    analyzeMeeting
-};
+module.exports = { createMeeting, getMeetings, getMeetingById, updateMeeting, deleteMeeting, addTranscript, analyzeMeeting };

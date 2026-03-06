@@ -1,21 +1,12 @@
-"""
-Module: llm_summarizer
-Description: Wraps the call to the Google Gemini API to extract
-structured meeting data (decisions and action items) from a transcript.
-"""
-
 import os
 import textwrap
-import google.generativeai as genai
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configure Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
 def summarize_with_llama(transcript):
-    """Call Google Gemini to extract structured JSON from a transcript.
+    """Call Google Gemini to extract structured JSON from a transcript using REST API.
 
     Args:
         transcript (str): Cleaned transcript text.
@@ -23,6 +14,11 @@ def summarize_with_llama(transcript):
     Returns:
         str: Raw model output (expected to contain a JSON object).
     """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("Error: GEMINI_API_KEY environment variable not set")
+        return None
+
     prompt = textwrap.dedent(f"""
     You are an expert meeting assistant. Your task is to extract key decisions and action items from a meeting transcript.
     The output MUST be a valid JSON object and nothing else. Do not include markdown code fences or any other text.
@@ -61,10 +57,32 @@ def summarize_with_llama(transcript):
     {transcript}
     """)
 
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(prompt)
-        return response.text.strip()
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract text from the Gemini REST response format
+        if "candidates" in data and len(data["candidates"]) > 0:
+            content = data["candidates"][0].get("content", {})
+            parts = content.get("parts", [])
+            if parts:
+                return parts[0].get("text", "").strip()
+        
+        print("Error: Unexpected response format from Gemini API")
+        return None
+        
+    except requests.exceptions.HTTPError as err:
+        print(f"HTTP Error calling Gemini API: {err.response.text}")
+        return None
     except Exception as e:
-        print(f"Error calling Gemini API: {e}")
+        print(f"Error calling Gemini REST API: {e}")
         return None
