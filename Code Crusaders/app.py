@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from code_analyzer import CodeAnalyzer
 from review_engine import CodeReviewEngine
+from github_integration import fetch_from_url, fetch_file_content, parse_github_url
 from db import save_review, get_all_reviews, clear_history, get_stats, save_setting, get_setting
 from utils import (
     SUPPORTED_LANGUAGES,
@@ -472,9 +473,14 @@ def _load_sample(filename: str):
             st.session_state["code_paste"] = f.read()
 
 
+# Pre-render: if GitHub code was fetched on a previous run, load it into the widget
+if st.session_state.get("_github_code"):
+    st.session_state["code_paste"] = st.session_state.pop("_github_code")
+
+
 # ─── Code Input ──────────────────────────────────────────────────────────────
 
-input_tab, upload_tab, sample_tab = st.tabs(["📝 Paste Code", "📁 Upload File", "📦 Sample Code"])
+input_tab, upload_tab, github_tab, sample_tab = st.tabs(["📝 Paste Code", "📁 Upload File", "🐙 GitHub Import", "📦 Sample Code"])
 
 code_input = ""
 
@@ -498,6 +504,101 @@ with upload_tab:
         if detected_lang != "Unknown":
             language = detected_lang
         st.code(code_input, language=language.lower().split()[0])
+
+with github_tab:
+    st.markdown("**Import code directly from any public GitHub repository**")
+    github_url = st.text_input(
+        "GitHub URL",
+        placeholder="https://github.com/owner/repo/blob/main/path/to/file.py",
+        help="Paste a GitHub file URL, raw URL, or repo URL to browse files",
+    )
+
+    if github_url:
+        # Only fetch if URL changed since last fetch
+        cached_url = st.session_state.get("_github_cached_url", "")
+        cached_result = st.session_state.get("_github_cached_result", None)
+
+        if github_url != cached_url or cached_result is None:
+            with st.spinner("🔄 Fetching from GitHub..."):
+                result = fetch_from_url(github_url)
+            st.session_state["_github_cached_url"] = github_url
+            st.session_state["_github_cached_result"] = result
+        else:
+            result = cached_result
+
+        if result.get("success"):
+            # It's a directory listing — let user pick a file
+            if result.get("type") == "directory":
+                st.markdown(f"**📂 Repository:** `{result.get('repo', '')}` — Branch: `{result.get('branch', 'main')}`")
+                current_path = result.get("current_path", "")
+                if current_path:
+                    st.markdown(f"**📁 Path:** `{current_path}`")
+
+                dirs = result.get("dirs", [])
+                files = result.get("files", [])
+
+                if dirs:
+                    st.markdown("##### 📁 Folders")
+                    dir_cols = st.columns(min(len(dirs), 4))
+                    for i, d in enumerate(dirs[:12]):
+                        with dir_cols[i % min(len(dirs), 4)]:
+                            st.markdown(f"📂 `{d['name']}/`")
+
+                if files:
+                    st.markdown("##### 📄 Code Files")
+                    selected_file = st.selectbox(
+                        "Select a file to review",
+                        options=[f["path"] for f in files],
+                        format_func=lambda x: f"📄 {x.split('/')[-1]}  ({x})",
+                    )
+                    if selected_file and st.button("📥 Load Selected File", use_container_width=True):
+                        parsed = parse_github_url(github_url)
+                        if parsed:
+                            file_result = fetch_file_content(
+                                parsed["owner"], parsed["repo"],
+                                selected_file, parsed.get("branch", "main"),
+                            )
+                            if file_result.get("success"):
+                                code_input = file_result["content"]
+                                st.session_state["_github_code"] = code_input
+                                detected_lang = detect_language(file_result.get("filename", ""))
+                                if detected_lang != "Unknown":
+                                    language = detected_lang
+                                st.success(f"✅ Loaded `{file_result.get('filename', '')}` ({len(code_input)} chars) — switch to **Paste Code** tab to review!")
+                                st.rerun()
+                            else:
+                                st.error(file_result.get("error", "Failed to load file."))
+                else:
+                    st.info("No supported code files found in this directory.")
+
+            # It's a single file — load directly (no rerun loop since we cache)
+            else:
+                # Only auto-load once per URL
+                loaded_url = st.session_state.get("_github_loaded_url", "")
+                if github_url != loaded_url:
+                    code_input = result["content"]
+                    st.session_state["_github_code"] = code_input
+                    st.session_state["_github_loaded_url"] = github_url
+                    st.rerun()
+                else:
+                    code_input = result["content"]
+                    filename = result.get("filename", "")
+                    repo_name = result.get("repo", "")
+                    st.success(f"✅ Loaded `{filename}` from `{repo_name}` ({result.get('size', 0)} chars) — code is in the **Paste Code** tab!")
+                    st.code(code_input[:3000] + ("\n..." if len(code_input) > 3000 else ""), language=language.lower().split()[0])
+        else:
+            st.error(f"❌ {result.get('error', 'Failed to fetch from GitHub.')}")
+    else:
+        # Clear cache when URL is removed
+        st.session_state.pop("_github_cached_url", None)
+        st.session_state.pop("_github_cached_result", None)
+        st.session_state.pop("_github_loaded_url", None)
+        st.markdown("""
+        **Supported URL formats:**
+        - `https://github.com/owner/repo/blob/main/file.py` — Direct file
+        - `https://raw.githubusercontent.com/owner/repo/main/file.py` — Raw file
+        - `https://github.com/owner/repo` — Browse repository files
+        """)
 
 with sample_tab:
     sample_col1, sample_col2 = st.columns(2)

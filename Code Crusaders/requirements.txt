@@ -4,3 +4,4 @@ langchain-groq>=0.0.1
 langchain-community>=0.0.10
 groq>=0.4.0
 python-dotenv>=1.0.0
+requests>=2.31.0
