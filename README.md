@@ -11,33 +11,10 @@ The meeting bot is planned for a later phase; this README focuses on the existin
 4. Jira tickets created and shown in the UI
 
 **High-Level Flow**
-```mermaid
-flowchart LR
-  U[User] --> UI[Frontend (React)]
-  UI -->|Login (demo)| S[Local Session]
-  UI -->|Save Jira Config| LS[LocalStorage]
-  UI -->|Create Meeting + Transcript| API[Node API /api/meetings]
-  API --> STORE[Meeting Store (JSON)]
-  UI -->|Analyze Meeting| API
-  API -->|POST transcript + Jira config| AI[Flask AI Service]
-  AI -->|Summarize + Extract Actions| LLM[Gemini API]
-  AI -->|Create Jira Issues| JIRA[Jira Cloud]
-  AI -->|Summary + Jira Issue Keys| API
-  API --> STORE
-  UI -->|Fetch Meeting Details| API
-  UI -->|Show Decisions + Action Items + Jira Links| U
-```
+![alt text](diagram-export-06-03-2026-15_47_30.png)
 
 **Transcript Analysis Flow**
-```mermaid
-flowchart TD
-  T[Transcript] --> C[Clean Transcript]
-  C --> G[Gemini Summarizer]
-  G --> P[Parse JSON]
-  P --> D[Decisions + Action Items]
-  D --> J[Create Jira Issues]
-  J --> R[Attach Jira Issue Keys]
-```
+![alt text](diagram-export-06-03-2026-15_49_30.png)
 
 **Repo Structure**
 1. `backend/` — Flask AI service (Gemini + Jira integration)
@@ -126,6 +103,16 @@ python -m pip install -r requirements.txt
 - Real authentication (backend-managed users)
 - Persistent meeting storage in a database
 
----
 
-If you want changes to flows or a deeper architecture section, tell me and I’ll add it.
+## Demo:
+## Sample transcript: 
+
+![alt text](image.png)
+
+## Action Items:
+
+![alt text](image-1.png)
+
+## Jira DashBoard:
+
+![alt text](image-2.png)
